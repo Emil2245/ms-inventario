@@ -2,6 +2,8 @@ package ec.edu.uce.cati.service;
 
 import ec.edu.uce.cati.repository.model.IntellectualPropertyPublic;
 import ec.edu.uce.cati.repository.InventoryRepository;
+import ec.edu.uce.cati.repository.dto.IntellectualPropertyPublicDTO;
+import ec.edu.uce.cati.service.mapper.InventoryMapper;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import org.bson.types.ObjectId;
@@ -24,8 +26,8 @@ public class InventoryService {
      *
      * @return un Multi que emitirá cada propiedad.
      */
-    public Multi<IntellectualPropertyPublic> getAll() {
-        return inventoryRepository.streamAll();
+    public Multi<IntellectualPropertyPublicDTO> getAll() {
+        return inventoryRepository.streamAll().onItem().transform(InventoryMapper::entityToDto);
     }
 
     /**
@@ -34,10 +36,10 @@ public class InventoryService {
      * @param id El ID del documento.
      * @return Un Uni que contendrá la entidad o un fallo si no se encuentra.
      */
-    public Uni<IntellectualPropertyPublic> getById(String id) {
+    public Uni<IntellectualPropertyPublicDTO> getById(String id) {
         return inventoryRepository.findById(new ObjectId(id))
-                // Si el item es null (no encontrado), cambiamos el Uni a un fallo.
-                .onItem().ifNull().failWith(() -> new NotFoundException("No se encontró la propiedad con ID: " + id));
+                .onItem().ifNull().failWith(() -> new NotFoundException("No se encontró la propiedad con ID: " + id))
+                .onItem().transform(InventoryMapper::entityToDto);
     }
 
     /**
@@ -46,23 +48,18 @@ public class InventoryService {
      * @param ip La entidad a crear.
      * @return Un Uni que contendrá la entidad creada.
      */
-    public Uni<IntellectualPropertyPublic> create(IntellectualPropertyPublic ip) {
-        // Lógica de validación (sigue siendo síncrona y rápida)
-        if (ip.type == null || ip.type.isBlank()) {
+    public Uni<IntellectualPropertyPublicDTO> create(IntellectualPropertyPublicDTO dto) {
+        if (dto.type == null || dto.type.isBlank()) {
             return Uni.createFrom().failure(new IllegalArgumentException("El campo 'type' es obligatorio."));
         }
-        if (ip.details == null) {
+        if (dto.details == null) {
             return Uni.createFrom().failure(new IllegalArgumentException("El campo 'details' es obligatorio."));
         }
-
-        // Lógica de enriquecimiento
-        ip.id = new ObjectId();
-        ip.approval_date = Date.from(Instant.now());
-
-        // La operación de persistencia devuelve un Uni<Void> (un Uni que no contiene valor, solo indica que terminó).
-        // Lo transformamos para que devuelva la entidad creada.
-        return inventoryRepository.persist(ip)
-                .onItem().transform(v -> ip); // Cuando persist() termine, devuelve el objeto 'ip'.
+        IntellectualPropertyPublic entity = InventoryMapper.dtoToEntity(dto);
+        entity.id = new ObjectId();
+        entity.approvalDate = Date.from(Instant.now());
+        return inventoryRepository.persist(entity)
+                .onItem().transform(v -> InventoryMapper.entityToDto(entity));
     }
 
     /**
@@ -82,7 +79,7 @@ public class InventoryService {
      * @param type El tipo a buscar.
      * @return Un Multi que emitirá las propiedades que coincidan.
      */
-    public Multi<IntellectualPropertyPublic> findByType(String type) {
-        return inventoryRepository.findByType(type);
+    public Multi<IntellectualPropertyPublicDTO> findByType(String type) {
+        return inventoryRepository.findByType(type).onItem().transform(InventoryMapper::entityToDto);
     }
 }
